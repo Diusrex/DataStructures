@@ -57,23 +57,38 @@ protected:
     // delete will need to be propogated up.
     void balance(Node* current, bool only_rotate_once);
 
+    // Updates the height of the node based on its two children.
+    // The children MUST already have correct height
     void update_height(Node* node) const;
+
     // If lhs is taller, will be positive. Otherwise negative.
     int subtree_difference(const Node* node) const;
+
+    // Gets the height of a node, with nullptr being -1.
     int height(const Node* node) const;
 
+    // Rotates the subtree that has this node as base. Will update the heights
+    // for the nodes that are changed.
     void left_rotate(Node* node);
     void right_rotate(Node* node);
 
     void set_left_child(Node* parent, Node* new_child) const;
     void set_right_child(Node* parent, Node* new_child) const;
 
+    // Will ensure the subtree ownership is completely transfered from
+    // old_root to new_root.
+    // Is able to handle new_root being nullptr, but will crash if old_root is
+    // nullptr.
     void transfer_subtree_parentship(Node* old_root, Node* new_root);
 
+    // Based on the rules of a BST, will return the 'best' node to be deleted,
+    // based on wanting to remove the value in given node.
     Node* get_removed_node(Node* node_with_removed_value);
 
     void print_out(std::ostream& o, Node* node) const;
 
+    // Will delete the sub-tree in O(n) time, where n is the number of nodes in
+    // subtree.
     void delete_subtree(Node* node);
 };
 
