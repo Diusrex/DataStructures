@@ -174,7 +174,7 @@ bool DeleteRightRotate() {
     
     tree.remove(8);
 
-    if (!tree.size() == 3)
+    if (tree.size() != 3)
         throw "Failure in DeleteRightRotate: size is wrong. Misconfigured?";
 
     bool valid = CheckRoot(tree, 3, "DeleteRightRotate");
@@ -211,7 +211,7 @@ bool DeleteLeftRotate() {
     
     tree.remove(3);
 
-    if (!tree.size() == 3)
+    if (tree.size() != 3)
         throw "Failure in DeleteRightRotate: size is wrong. Misconfigured?";
 
     bool valid = CheckRoot(tree, 8, "DeleteLeftRotate");
@@ -231,7 +231,7 @@ bool DeleteRightLeftRotate() {
     
     tree.remove(3);
 
-    if (!tree.size() == 3)
+    if (tree.size() != 3)
         throw "Failure in DeleteRightRotate: size is wrong. Misconfigured?";
 
     bool valid = CheckRoot(tree, 7, "DeleteRightLeftRotate");
