@@ -3,6 +3,7 @@
 
 // This file contains RedBlackTree's implementation for all functions that are
 // specific to rotation.
+// For an explanation, see diusrex.com/2017/02/red-black-trees-introduction/#rotation
 
 #ifndef REDBLACKTREE_H
 #error This file should only be included by RedBlackTree.h
