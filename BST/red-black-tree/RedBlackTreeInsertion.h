@@ -3,6 +3,7 @@
 
 // This file contains RedBlackTree's implementation for all functions that are
 // specific to insertion.
+// For an explanation of insertion, see diusrex.com/painless-red-black-tree-implementation-insertion
 
 #ifndef REDBLACKTREE_H
 #error This file should only be included by RedBlackTree.h
