@@ -56,6 +56,7 @@ void RedBlackTree<T>::HandleDoubleRed(Node* child, Node* parent) {
     Node* uncle = GetSibling(parent);
     
     // Can switch parent + uncle to be black and possibly switch grandparent
+    // diusrex.com/painless-red-black-tree-implementation-insertion#uncle-red
     if (IsRed(uncle)) {
         parent->color = uncle->color = Node::BLACK;
         
@@ -68,8 +69,10 @@ void RedBlackTree<T>::HandleDoubleRed(Node* child, Node* parent) {
         return;
     }
     
+    // diusrex.com/painless-red-black-tree-implementation-insertion#grandparent-rotations
     // Two main categories of shifts
     if (parent == grandparent->left) {
+        // diusrex.com/painless-red-black-tree-implementation-insertion#parent-left
         // Overall, is a right shift to shift the grandparent to where the uncle used to be
             // However, which node will be moved there depends on the structure beforehand
         
@@ -80,6 +83,7 @@ void RedBlackTree<T>::HandleDoubleRed(Node* child, Node* parent) {
         
         RightRotate(grandparent);
     } else { // parent == grandparent->right
+        // diusrex.com/painless-red-black-tree-implementation-insertion#parent-right
         // Overall, is a right shift to shift the grandparent to where the uncle used to be
             // However, which node will be moved there depends on the structure beforehand
         
