@@ -2,6 +2,8 @@
 
 To compile the tests, just run make.
 
+I checked my understanding of a skip list using [Wikipedia](https://en.wikipedia.org/wiki/Skip_list), although I only really needed the diagram.
+
 ### Files
 
 skip_list.h contains the full implementation of the BST, and is a standalone file.

@@ -17,10 +17,6 @@ const int EveryDeletedImmediately = 5;
 // In large test, will delete multiples of this after everything else was inserted
 const int EveryDeletedAfter = 3;
 
-// TODO: Specialized tests -> really nothing, other than removing last item,
-// and some basic does find node.
-
-
 class skip_list_test : public skip_list<int> {
 public:
     void assert_is_valid() const {
@@ -227,8 +223,6 @@ bool FindChecks() {
 }
 
 
-
-// TODO: Enable!!
 bool RemoveElementAfter() {
     skip_list_test skip_list;
 
