@@ -38,9 +38,9 @@ protected:
         Node(Color color, const T &value, Node*parent)
             : color(color),
             value(value),
+            parent(parent),
             left(nullptr),
-            right(nullptr),
-            parent(parent)
+            right(nullptr)
         {}
         
         Color color;
