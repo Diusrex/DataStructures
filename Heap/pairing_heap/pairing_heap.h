@@ -148,6 +148,7 @@ void pairing_heap<Key, Weight>::delete_node(Node* node) {
     // Merge children subtree with root
     heap_root = merge_heaps(heap_root, children_subtree);
 
+    key_to_node.erase(node->key);
     delete node;
     --num_elem;
 }
