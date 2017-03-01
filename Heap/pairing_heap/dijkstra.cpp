@@ -11,8 +11,7 @@ using namespace std;
 
 // Assumes the data is provided through input stream, in format:
 // N E
-// One line per edge X->Y
-
+// X Y c -> edge connecting X and Y with cost c
 // Also assumes the graph is 0 indexed
 
 // Assumes undirected graph.
