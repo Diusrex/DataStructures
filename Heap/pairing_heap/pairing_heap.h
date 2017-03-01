@@ -313,7 +313,7 @@ void pairing_heap<Key, Weight>::print_out(Node* current, std::ostream& o, const 
 
     const std::string next_offset = offset + "    ";
     o << offset << "Key " << current->key << " weight " << current->weight << ". Children:" << std::endl;
-    //o << offset << "    ptrs: " << current->left_sibling << ' ' << current->right_sibling << ' ' << current->left_child << ' ' << current->parent << ' ' <<  current << '\n';
+
     Node* base_child = current->left_child;
     if (base_child == nullptr) {
         o << offset << "  None";
