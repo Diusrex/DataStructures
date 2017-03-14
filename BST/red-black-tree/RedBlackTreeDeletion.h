@@ -3,6 +3,7 @@
 
 // This file contains RedBlackTree's implementation for all functions that are
 // specific to deletion.
+// For an explanation of deletion, see diusrex.com/painless-red-black-tree-implementation-deletion
 
 #ifndef REDBLACKTREE_H
 #error This file should only be included by RedBlackTree.h
@@ -48,7 +49,6 @@ bool RedBlackTree<T>::Delete(const T& value)
     // Does not change the references for nodeBeingRemoved
     TransferSubtreeParentship(nodeBeingRemoved, movingUp);
     
-    
     if (IsRed(movingUp) || IsRed(nodeBeingRemoved)) {
         movingUp->color = Node::BLACK;
     } else {
@@ -70,7 +70,6 @@ bool RedBlackTree<T>::Delete(const T& value)
 
 // nodeToRemove must start off with the node with value to be deleted
 // Will return the node that is to be removed
-// 
 template<typename T>
 typename RedBlackTree<T>::Node* RedBlackTree<T>::GetRemovedNode(Node* nodeToRemove) const {
     if (nodeToRemove->left == nullptr) {
@@ -100,28 +99,30 @@ typename RedBlackTree<T>::Node* RedBlackTree<T>::GetRemovedNode(Node* nodeToRemo
     return nextBiggest;
 }
 
-// doubleBlackChild cannot be null
+// doubleBlackNode cannot be null
 // If it is, should replace it with a blank node, then remove and delete it after
+// diusrex.com/painless-red-black-tree-implementation-deletion#double-black
 template<typename T>
-void RedBlackTree<T>::HandleDoubleBlack(Node* doubleBlackChild) {
-    if (doubleBlackChild->parent == nullptr) {
+void RedBlackTree<T>::HandleDoubleBlack(Node* doubleBlackNode) {
+    if (doubleBlackNode->parent == nullptr) {
         // At the root, so can change it freely from double black to black
         return;
     }
     
-    // Know that current doubleBlackChild previously had a black relative
+    // Know that current doubleBlackNode previously had a black relative
     // So this means that sibling must exist
-    Node* parent = doubleBlackChild->parent;
-    Node* sibling = GetSibling(doubleBlackChild);
-    Node* siblingLeft = sibling->left;
-    Node* siblingRight = sibling->right;
+    Node* parent = doubleBlackNode->parent;
+    Node* sibling = GetSibling(doubleBlackNode);
+    Node* siblingLeftC = sibling->left;
+    Node* siblingRightC = sibling->right;
     
-    bool oneSiblingChildIsRed = IsRed(siblingLeft) || IsRed(siblingRight);
+    bool oneSiblingChildIsRed = IsRed(siblingLeftC) || IsRed(siblingRightC);
     
     // Handle the different situations for a double black node.
     if (IsRed(sibling)) {
+        // diusrex.com/painless-red-black-tree-implementation-deletion#sibling-red
         // Rotate it in the direction of the double black.
-        if (doubleBlackChild == parent->left) {
+        if (doubleBlackNode == parent->left) {
             LeftRotate(parent);
         } else {
             RightRotate(parent);
@@ -131,21 +132,24 @@ void RedBlackTree<T>::HandleDoubleBlack(Node* doubleBlackChild) {
         sibling->color = Node::BLACK;
         parent->color = Node::RED;
         
-        // However, the doubleBlackChild remains double black, just shifted the red around
+        // However, the doubleBlackNode remains double black, just shifted the red around
         // This case makes it easier to finish.
-        HandleDoubleBlack(doubleBlackChild);
+        HandleDoubleBlack(doubleBlackNode);
     } else if (oneSiblingChildIsRed) {
+        // diusrex.com/painless-red-black-tree-implementation-deletion#sibling-red-child
         // Rotate the subtree, centered at parent, towards the double black child.
         // If the siblings non-red child would be rotated to be the child of new subtree root,
         // do a double rotate to ensure the red node would be rotated there.
-        if (doubleBlackChild == parent->left) {
-            if (IsBlack(siblingRight)) {
+        if (doubleBlackNode == parent->left) {
+            // diusrex.com/painless-red-black-tree-implementation-deletion#sibling-right
+            if (IsBlack(siblingRightC)) {
                 RightRotate(sibling);
             }
             
             LeftRotate(parent);
-        } else { // Is on right
-            if (IsBlack(siblingLeft)) {
+        } else { // Double black is right
+            // diusrex.com/painless-red-black-tree-implementation-deletion#sibling-left
+            if (IsBlack(siblingLeftC)) {
                 LeftRotate(sibling);
             }
         
@@ -161,12 +165,13 @@ void RedBlackTree<T>::HandleDoubleBlack(Node* doubleBlackChild) {
         // As well, the color of nodes to left and right of new parent should be black
         newParent->left->color = newParent->right->color = Node::BLACK;
     } else { // Sibling and children are black
+        // diusrex.com/painless-red-black-tree-implementation-deletion#sibling-children-black
         // Shift black up, removing from sibling
         sibling->color = Node::RED;
-        if (IsBlack(doubleBlackChild->parent)) {
-            HandleDoubleBlack(doubleBlackChild->parent);
+        if (IsBlack(doubleBlackNode->parent)) {
+            HandleDoubleBlack(doubleBlackNode->parent);
         } else {
-            doubleBlackChild->parent->color = Node::BLACK;
+            doubleBlackNode->parent->color = Node::BLACK;
         }
     }
 }
