@@ -5,9 +5,11 @@
 #include <map>
 #include <string>
 #include <sstream>
+#include <queue>
 #include <vector>
 
 
+using std::make_pair;
 using std::to_string;
 
 const int NumRandomInserted =       500000;
@@ -37,8 +39,7 @@ public:
     }
 
     void assert_is_valid() const {
-        size_t total_num_nodes = assert_heap_is_valid(heap_root, std::numeric_limits<int>::min(),
-               nullptr);
+        size_t total_num_nodes = assert_heap_is_valid();
 
         if (size() != total_num_nodes)
             throw "The size wasn't updated properly: is " +
@@ -46,62 +47,106 @@ public:
     }
 
 private:
+    // Just change to use a queue, and check the parent ptr when adding the node.
     // Will return number of nodes.
-    size_t assert_heap_is_valid(Node* node, int lowest_allowed, Node* parent) const {
-        if (node == nullptr)
+    size_t assert_heap_is_valid() const {
+        if (heap_root == nullptr) {
             return 0;
+        }
 
-        if (node->right_sibling == nullptr)
-            throw "The key " + node->key + " with weight " + to_string(node->weight) +
-                " doesn't have any ptr to right sibling";
+        size_t total = 0;
 
+        // Will iterate through all nodes using a queue, since recursive will take too much memory.
+        std::queue<std::pair<Node*, int>> nodes_and_parent_val;
+        nodes_and_parent_val.push(make_pair(heap_root, std::numeric_limits<int>::min()));
 
-        // Will start by iterating through siblings, starting from the right.
-        return assert_heap_siblings_are_valid(node->right_sibling, lowest_allowed, node, parent);
+        while (!nodes_and_parent_val.empty()) {
+            Node* node = nodes_and_parent_val.front().first;
+            int lowest_allowed = nodes_and_parent_val.front().second;
+            nodes_and_parent_val.pop();
+
+            if (node->right_sibling == nullptr)
+                throw "The key " + node->key + " with weight " + to_string(node->weight) +
+                    " doesn't have any ptr to right sibling";
+
+            // Ensure all nodes in sibling list are valid.
+            // Already checked the base_of_sibling_tree against parent.
+            total += assert_heap_siblings_are_valid(node, lowest_allowed, node->parent);
+
+            // Add all of the siblings children.
+            add_heap_siblings_children_list(node, &nodes_and_parent_val);
+        }
+
+        return total;
     }
 
-    // Will return number of nodes.
-    size_t assert_heap_siblings_are_valid(Node* node, int lowest_allowed, Node* base_of_sibling_list,
+    // Will return the number of nodes in sibling list
+    // Will check that all of the siblings are valid, but will not compare against their children list.
+    size_t assert_heap_siblings_are_valid(Node* base_of_sibling_list, int lowest_allowed,
             Node* parent) const {
-        if (node->left_sibling == nullptr)
-            throw "The key " + node->key + " with weight " + to_string(node->weight) +
-                " doesn't have any ptr to left sibling";
-        if (node->right_sibling == nullptr)
-            throw "The key " + node->key + " with weight " + to_string(node->weight) +
-                " doesn't have any ptr to right sibling";
-        
-        if (node->weight < lowest_allowed) {
-            throw "The weight " + to_string(node->weight) + " for key " + node->key + 
-                " is below that of a parent (" + to_string(lowest_allowed) + ")";
-        }
+        Node* current = base_of_sibling_list;
+        size_t total = 0;
 
-        if (node->parent != parent)
-            throw "The key " + node->key + " with weight " + to_string(node->weight) +
-                " doesn't point to correct node: " + node_to_string(node->parent) + " vs " +
-                node_to_string(parent);
+        do {
+            ++total;
 
-        // Do need to check both left and right siblings, since it is possible that just one
-        // of them is incorrect.
-        Node* left_sibling = node->left_sibling;
-        if (left_sibling->right_sibling != node)
-            throw "The key " + left_sibling->key + " with weight " + to_string(node->weight) +
-                " doesn't have a correct ptr to its right sibling with key " +
-                node->key + " with weight " + to_string(node->weight);
+            if (current->left_sibling == nullptr)
+                throw "The key " + current->key + " with weight " + to_string(current->weight) +
+                    " doesn't have any ptr to left sibling";
+            if (current->right_sibling == nullptr)
+                throw "The key " + current->key + " with weight " + to_string(current->weight) +
+                    " doesn't have any ptr to right sibling";
 
-        Node* right_sibling = node->right_sibling;
-        if (right_sibling->left_sibling != node)
-            throw "The key " + right_sibling->key + " with weight " + to_string(node->weight) +
-                " doesn't have a correct ptr to its left sibling with key " +
-                node->key + " with weight " + to_string(node->weight);
+            if (current->weight < lowest_allowed) {
+                throw "The weight " + to_string(current->weight) + " for key " + current->key +
+                    " is below that of a parent (" + to_string(lowest_allowed) + ")";
+            }
 
-        size_t count = 1 + assert_heap_is_valid(node->left_child, node->weight, node);
+            if (current->parent != parent)
+                throw "The key " + current->key + " with weight " + to_string(current->weight) +
+                    " doesn't point to correct current: " + node_to_string(current->parent) + " vs " +
+                    node_to_string(parent);
 
-        if (node != base_of_sibling_list) {
-            count += assert_heap_siblings_are_valid(node->right_sibling, lowest_allowed,
-                    base_of_sibling_list, parent);
-        }
+            // Do need to check both left and right siblings, since it is possible that just one
+            // of them is incorrect.
+            Node* left_sibling = current->left_sibling;
+            if (left_sibling->right_sibling != current)
+                throw "The key " + left_sibling->key + " with weight " + to_string(current->weight) +
+                    " doesn't have a correct ptr to its right sibling with key " +
+                    current->key + " with weight " + to_string(current->weight);
 
-        return count;
+            Node* right_sibling = current->right_sibling;
+            if (right_sibling->left_sibling != current)
+                throw "The key " + right_sibling->key + " with weight " + to_string(current->weight) +
+                    " doesn't have a correct ptr to its left sibling with key " +
+                    current->key + " with weight " + to_string(current->weight);
+
+            current = current->right_sibling;
+
+        } while (current != base_of_sibling_list);
+
+        return total;
+    }
+
+    // Will just add one element from the children list into nodes_and_parent_val.
+    void add_heap_siblings_children_list(Node* base_of_sibling_list,
+            std::queue<std::pair<Node*, int>>* nodes_and_parent_val) const {
+        Node* current = base_of_sibling_list;
+
+        do {
+            if (current->left_child != nullptr) {
+                Node* child = current->left_child;
+                if (child->parent != current)
+                    throw "The key " + child->key + " with weight " + to_string(child->weight) +
+                        " doesn't point to correct current: " + node_to_string(child->parent) + " vs " +
+                        node_to_string(current);
+
+                nodes_and_parent_val->push(make_pair(child, current->weight));
+            }
+
+            current = current->right_sibling;
+
+        } while (current != base_of_sibling_list);
     }
 
 
@@ -386,11 +431,11 @@ void LargeRandomTest() {
 
     srand(0);
 
-
     std::vector<std::string> names = GetAllNames(NumRandomInserted);
     std::vector<int> weights(NumRandomInserted);
     std::map<int, int> weight_to_counts;
     std::unordered_map<std::string, int> name_to_index;
+
 
     for (int i = 0; i < NumRandomInserted; ++i) {
         weights[i] = rand();

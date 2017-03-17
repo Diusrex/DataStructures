@@ -4,6 +4,7 @@
 #include <cassert>
 #include <iostream>
 #include <unordered_map>
+#include <queue>
 
 // Handling of differnent functionality from https://brilliant.org/wiki/pairing-heap/.
 // Specifically, will use simple two-pass (left->right then right->left) to handle 
@@ -284,20 +285,27 @@ void pairing_heap<Key, Weight>::delete_heap(Node* heap) {
         return;
     }
 
-    delete_heap(heap->left_child);
+    // Will delete all siblings in iteration.
+    std::queue<Node*> toDelete;
+    toDelete.push(heap);
 
-    // Go through linked list by right siblings.
-    Node* current = heap->right_sibling;
-    while (current != heap) {
-        delete_heap(current->left_child);
-        
-        current = current->right_sibling;
-        
-        // Delete the node which just had children cleared.
-        delete current->left_sibling;
+    while (!toDelete.empty()) {
+        Node* base_of_sibling_list = toDelete.front();
+        toDelete.pop();
+        Node* current = base_of_sibling_list;
+
+        do {
+            if (current->left_child != nullptr) {
+                toDelete.push(current->left_child);
+            }
+
+            Node* prev = current;
+            current = current->right_sibling;
+
+            delete prev;
+
+        } while (current != base_of_sibling_list);
     }
-
-    delete heap;
 }
 
 template <class Key, class Weight>
