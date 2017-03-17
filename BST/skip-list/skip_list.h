@@ -295,10 +295,11 @@ void skip_list<T>::delete_level(Interval* interval) {
         return;
     }
 
-    // Delete nodes to right in level.
-    delete_level(interval->right);
-
-    delete interval;
+    while (interval != nullptr) {
+        Interval* next = interval->right;
+        delete interval;
+        interval = next;
+    }
 }
 
 template <class T>
