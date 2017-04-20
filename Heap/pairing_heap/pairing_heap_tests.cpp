@@ -47,7 +47,6 @@ public:
     }
 
 private:
-    // Just change to use a queue, and check the parent ptr when adding the node.
     // Will return number of nodes.
     size_t assert_heap_is_valid() const {
         if (heap_root == nullptr) {
@@ -302,7 +301,6 @@ void ChangeWeightOfRootTest() {
 
 }
 
-// TODO: When has 0, 1, 2, or 3 siblings.
 void RemoveRootNoChildrenTest() {
     pairing_heap_test heap;
     heap.insert("A", 5);
