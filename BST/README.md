@@ -1,4 +1,8 @@
-# Comparison
+# Binary Search Trees
+
+All of these trees support insertion in O(log n), deletion in O(log n), and finding an element in O(log n). Yes, a skip list can still be thought of as a tree, see [Skipt Lists: Done Right](http://ticki.github.io/blog/skip-lists-done-right/)
+
+## Comparison
 
 On my VM:
 - Avl Tree takes ~3025ms
