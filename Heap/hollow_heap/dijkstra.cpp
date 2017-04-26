@@ -11,7 +11,6 @@ using namespace std;
 // TODO: This should have its own folder in Heap directory, and be able to run
 // hollow heap and pairing heap.
 
-
 // Assumes the data is provided through input stream, in format:
 // N E
 // One line per edge X->Y
@@ -27,6 +26,34 @@ struct Edge {
     int to;
     int weight;
 };
+
+vector<vector<Edge>> GenerateGraph(int N, int E) {
+    vector<vector<Edge>> edges(N);
+
+    vector<vector<bool>> connected(N, vector<bool>(N, false));
+    // To make things easier.
+    connected[0][0] = true;
+    for (int e = 0; e < E; ++e) {
+        // 0-0 is always considered to be connected!
+        int from = 0;
+        int to = 0;
+
+        while (connected[from][to]) {
+            from = rand() % N;
+            to = from;
+            while (to == from) {
+                to = rand() % N;
+            }
+        }
+
+        int cost = 1 + rand() % 100000;
+
+        connected[from][to] = true;
+        edges[from].push_back({to, cost});
+    }
+
+    return edges;
+}
 
 // Distance will be numeric_limits<int>::max if node isn't reachable from startingNode.
 vector<int> DijkstraKeyUpdate(const vector<vector<Edge>>& edges, int startingNode,
@@ -101,9 +128,10 @@ vector<int> DijkstraReInsert(const vector<vector<Edge>>& edges, int startingNode
 
 enum class DijkstrasToUse {REINSERT, UPDATE_KEY_MULTI_ROOT, UPDATE_KEY_SINGLE_ROOT};
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
+    if (argc < 3) {
         cout << "ERROR: Need argument `reinsert`, `updatekey_multiroot`, or `updatekey_singleroot`.\n";
-        cout << "Adding `less_out` after will ensure no graph related output is printed.\n";
+        cout << "Then, `input` or `generated` to identify how the graph should be created.\n";
+        cout << "Adding `verbose` after will cause graph related output to be printed.\n";
         return 1;
     }
 
@@ -122,22 +150,34 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    bool printOutput = true;
-    if (argc >= 3 && string(argv[2]) == "less_out") {
-        printOutput = false;
-    } else if (argc >= 3) {
-        cout << "Warning: Unrecognised input " << argv[2] << '\n';
+    string graph_gen_type = argv[2];
+
+    bool printOutput = false;
+    if (argc >= 4 && string(argv[3]) == "verbose") {
+        printOutput = true;
+    } else if (argc >= 4) {
+        cout << "Error: Unrecognised input " << argv[3] << '\n';
+        return 1;
     }
 
     int N, E;
     cin >> N >> E;
 
-    vector<vector<Edge>> edges(N);
-    for (int i = 0; i < E; ++i) {
-        int a, b, c;
-        cin >> a >> b >> c;
-        edges[a].push_back(Edge{b, c});
-        edges[b].push_back(Edge{a, c});
+    vector<vector<Edge>> edges;
+
+    if (graph_gen_type == "input") {
+        edges.resize(N);
+        for (int i = 0; i < E; ++i) {
+            int a, b, c;
+            cin >> a >> b >> c;
+            edges[a].push_back(Edge{b, c});
+            edges[b].push_back(Edge{a, c});
+        }
+        std::cout << "Done loading edges.\n";
+    } else {
+        std::cout << "Generating!\n";
+        edges = GenerateGraph(N, E);
+        std::cout << "Done generate edges.\n";
     }
     
     chrono::milliseconds before =
@@ -153,11 +193,13 @@ int main(int argc, char *argv[]) {
             break;
 
         case DijkstrasToUse::UPDATE_KEY_MULTI_ROOT:
-            distances = DijkstraKeyUpdate(edges, source, hollow_heap_base<int, int>{true});
+            distances = DijkstraKeyUpdate(
+                    edges, source, hollow_heap_base<int, int>{hollow_heap_type::MULTIPLE_ROOTS});
             break;
 
         case DijkstrasToUse::UPDATE_KEY_SINGLE_ROOT:
-            distances = DijkstraKeyUpdate(edges, source, hollow_heap_base<int, int>{false});
+            distances = DijkstraKeyUpdate(
+                    edges, source, hollow_heap_base<int, int>{hollow_heap_type::SINGLE_ROOT});
             break;
         }
 

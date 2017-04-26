@@ -18,14 +18,17 @@ const int NumRandomInserted =       500000;
 
 const int NumRandomChanged =        200000;
 
-const int NumElementsInserted =    1000000;
+// TODO: Increase to 1000000 once multiple parents is faster...
+    // Must be doing something extremely inefficiently, but is using the same amount of memory as other
+    // approaches.
+const int NumElementsInserted =    10000;
 const int EveryIndexChanged =            3;
 const int EveryIndexRemovedAfterChange = 4;
 
 class hollow_heap_test : public hollow_heap_base<std::string, int> {
 public:
-    hollow_heap_test(bool allow_multiple_roots)
-        : hollow_heap_base(allow_multiple_roots)
+    hollow_heap_test(hollow_heap_type type)
+        : hollow_heap_base(type)
     {}
 
     void assert_is_valid(bool most_recent_was_delete) const {
@@ -40,7 +43,7 @@ public:
                 to_string(total_num_nodes) + " while reports " + to_string(size());
     }
 
-    bool allows_multiple_roots() const { return allow_multiple_roots; }
+    bool heap_is_single_root_single_parent() const { return type == hollow_heap_type::SINGLE_ROOT; }
 
     void assert_root_has_child_key(const std::string& key, int index) const {
         const int wanted_index = index;
@@ -52,7 +55,6 @@ public:
 
         while (index > 0 && c_node != nullptr) {
             --index;
-            std::cout << c_node->key;
             c_node = c_node->right_sibling;
         }
 
@@ -75,7 +77,7 @@ private:
         // Will iterate through all nodes using a queue, since recursive will take too much memory.
         std::queue<Node*> parent_of_subtree;
 
-        if (allow_multiple_roots) {
+        if (allow_multiple_roots()) {
             check_multiroot_heap_list(most_recent_was_delete, &parent_of_subtree);
 
         } else {
@@ -142,11 +144,6 @@ private:
     void assert_heap_children_are_valid(Node* parent) const {
         int rank = parent->rank - 1;
 
-        int final_wanted_rank = 0;
-        if (parent->isHollow) {
-            final_wanted_rank = std::max(0, parent->rank - 2);
-        }
-
         if (parent->child_list == nullptr) {
             if (rank != -1) {
                 throw "Node " + parent->key + " should have had children due to non-zero rank " +
@@ -154,6 +151,21 @@ private:
             }
             // Will just run into issues if continue past here.
             return;
+        }
+
+        if (type == hollow_heap_type::TWO_PARENT) {
+            assert_children_are_valid_twoparent(parent, rank);
+        } else {
+            assert_children_are_valid_singleparent(parent, rank);
+        }
+
+        
+    }
+
+    void assert_children_are_valid_singleparent(Node* parent, int rank) const {
+        int final_wanted_rank = 0;
+        if (parent->isHollow) {
+            final_wanted_rank = std::max(0, parent->rank - 2);
         }
 
         Node* current = parent->child_list;
@@ -215,18 +227,56 @@ private:
         }
     }
 
-    // Will just add one element from the children list into nodes_and_parent_val.
-    void add_heap_children_list(Node* parent, std::queue<Node*>* parent_of_subtree) const {
-        if (parent->child_list == nullptr) {
-            return;
+    void assert_children_are_valid_twoparent(Node* parent, int rank) const {
+        // Must have children:
+        //   r - 1, r - 2, r - 3 (possibly interspersed with unranked children), until either:
+        //   1) Reaches a child which has parent as its second parent.
+        //   2) The ranks reach 0.
+        // Can possibly have both happen at once!
+        Node* current = parent->child_list;
+        Node* prev = nullptr;
+
+        for (; current != nullptr; prev = current, current = current->right_sibling) {
+            // Would have done a ranked link to add this node (or a latter node of same rank).
+            if (current->rank == rank) {
+                --rank;
+            }
+
+            if (current->weight < parent->weight) {
+                throw "The weight " + to_string(current->weight) + " for key " + current->key +
+                    " is below that of a parent (" + to_string(parent->weight) + ")";
+            }
         }
 
-        Node* current = parent->child_list;
-        do {
-            parent_of_subtree->push(current);
+        // Didn't encounter all ranks down to 1.
+        int last_rank = rank + 1;
+        if (last_rank != 0) {
+            // Check to see if this node was the second parent of a node with rank last_rank + 2
+            // TODO: MAKE SURE it is actually + 2
+            if (prev->second_parent == parent) {
+                if (last_rank != prev->rank - 2)
+                    throw "Didn't have enough ranked links, only got down to rank " +
+                        to_string(last_rank) + " from rank " + to_string(parent->rank) +
+                        " to childs " + to_string(prev->rank);
+            }
 
-            current = current->right_sibling;
-        } while (current != parent->child_list && current != nullptr);
+        }
+    }
+
+    // Will just add one element from the children list into nodes_and_parent_val.
+    void add_heap_children_list(Node* parent, std::queue<Node*>* parent_of_subtree) const {
+
+        for (Node *child = get_start_of_childlist(parent), *prev_child = nullptr;
+                !reached_end_of_childlist(child, prev_child, parent);
+                prev_child = child, child = child->right_sibling) {
+            // Default to just adding a node from its original parent,
+            // unless the original parent was already deleted.
+            if (parent == child->parent ||
+                    child->parent == nullptr) {
+                parent_of_subtree->push(child);
+            }
+
+        }
     }
 
     std::string node_to_string(const Node* node) const {
@@ -308,7 +358,7 @@ void InsertionChangesMinTest(hollow_heap_test heap) {
 
 void NoRankedWithUnrankedChangeMinTest(hollow_heap_test heap) {
     // Specialized test to ensure single root updating is handled correctly.
-    if (heap.allows_multiple_roots()) {
+    if (!heap.heap_is_single_root_single_parent()) {
         return;
     }
 
@@ -343,7 +393,7 @@ void NoRankedWithUnrankedChangeMinTest(hollow_heap_test heap) {
 
 void OneRankedWithUnrankedChangedMinTest(hollow_heap_test heap) {
     // Specialized test to ensure single root updating is handled correctly.
-    if (heap.allows_multiple_roots()) {
+    if (!heap.heap_is_single_root_single_parent()) {
         return;
     }
 
@@ -741,7 +791,6 @@ void run_hollow_heap_tests(const hollow_heap_test& heap) {
     ChangeWeightMinChangedTest(heap);
     ChangeWeightOfChildMustMove(heap);
 
-
     // Specialized tests.
     NoRankedWithUnrankedChangeMinTest(heap);
     OneRankedWithUnrankedChangedMinTest(heap);
@@ -758,8 +807,10 @@ void run_hollow_heap_tests(const hollow_heap_test& heap) {
 int main() {
     std::set_terminate([](){my_terminate(); });
     std::cout << "Running heap with multiple roots\n";
-    run_hollow_heap_tests(hollow_heap_test{true});
+    run_hollow_heap_tests(hollow_heap_test{hollow_heap_type::MULTIPLE_ROOTS});
     std::cout << "\nRunning heap with single root\n";
-    run_hollow_heap_tests(hollow_heap_test{false});
+    run_hollow_heap_tests(hollow_heap_test{hollow_heap_type::SINGLE_ROOT});
+    std::cout << "\nRunning heap with multiple parents\n";
+    run_hollow_heap_tests(hollow_heap_test{hollow_heap_type::TWO_PARENT});
 }
 
