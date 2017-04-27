@@ -4,10 +4,9 @@
 #include <algorithm>
 #include <cassert>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
 #include <queue>
-
-// TODO: This should be split into 3 subclasses rather than have the if else statements everywhere.
 
 // Multiple root invarients:
 //   heap_root_list will include heap_root_min
@@ -63,9 +62,364 @@
 
 // Implements the base functionality used by all of the different heaps.
 
+namespace hollow_heap {
+
 enum class hollow_heap_type{MULTIPLE_ROOTS, SINGLE_ROOT, TWO_PARENT};
+
+namespace internal {
+
+template <class Key, class Weight>
+struct base_node {
+    base_node(const Key& key, const Weight& weight)
+        : key(key),
+        weight(weight),
+        isHollow(false),
+        parent(nullptr),
+        second_parent(nullptr),
+        rank(0),
+        child_list(nullptr),
+        right_sibling(nullptr) {
+    }
+
+    const Key key;
+    Weight weight;
+    bool isHollow;
+
+    // TODO: Make this optional!
+    base_node* parent;
+
+    // TODO: Make this optional!
+    // Only set in decrease key when doing two parent variant.
+    // Will be the last node for that parent, so don't need to store an
+    // additional ptr for it.
+    base_node* second_parent;
+
+
+
+    // Invarient:
+    //  Will have rank children, with the children being in order r - 1, r - 2, ... 0
+    //  Unless is hollow, in which case will have r - 1, r - 2 children.
+    int rank;
+    // Will point to the highest ranked node in multiple root heap.
+    // Will point to rank 0 node if no unranked children, otherwise will not have any children.
+    // The first rank elements will be the ranked children, in decreasing order of rank.
+    // Then, these will be followed by the unranked children (if there are any).
+    base_node* child_list;
+    base_node* right_sibling;
+};
+
+// Handles the different algorithms needed for the different setups.
+template <class Key, class Weight>
+class hollow_heap_impl {
+    using Node = base_node<Key, Weight>;
+public:
+    virtual ~hollow_heap_impl() {}
+
+    virtual Node* get_start_of_childlist(Node* parent) const = 0;
+
+    virtual bool reached_end_of_childlist(Node* child, Node* prev_child,
+        Node* parent) const = 0;
+
+    virtual Node* meld_together(Node* added_heap, Node* heap_root_list) const = 0;
+
+    // TODO: Improve name!
+    virtual void setup_relationship_between_hollownode_and_copy(
+            Node* hollow_node, Node* new_node) const = 0;
+
+    // Will link the two nodes, using ranked link if possible.
+    // Otherwise, will use unranked linke.
+    Node* ranked_link(Node* h1, Node* h2) const {
+        assert(h1->rank == h2->rank);
+
+        // Only allow links between roots.
+        assert(h1->parent == nullptr);
+        assert(h2->parent == nullptr);
+
+        Node* winner;
+        Node* loser;
+        if (h1->weight < h2->weight) {
+            winner = h1;
+            loser = h2;
+        } else {
+            winner = h2;
+            loser = h1;
+        }
+
+        loser->parent = winner;
+
+        // Add loser to winners child list, in correct position.
+        do_ranked_link(winner, loser);
+        winner->rank++;
+
+        return winner;
+    }
+
+protected:
+
+    void update_parent_pointers(Node* new_node) const {
+        // Now, update the parent pointer for moved nodes.
+        for (Node *child = get_start_of_childlist(new_node), *prev_child = nullptr;
+                !reached_end_of_childlist(child, prev_child, new_node);
+                prev_child = child, child = child->right_sibling) {
+            child->parent = new_node;
+        }
+    }
+
+    virtual void do_ranked_link(Node* winner, Node* loser) const = 0;
+
+    Node* unranked_link(Node* h1, Node* h2) const {
+        assert(h1->rank != h2->rank);
+
+        // Only allow links between roots.
+        assert(h1->parent == nullptr);
+        assert(h2->parent == nullptr);
+
+        Node* winner;
+        Node* loser;
+        if (h1->weight < h2->weight) {
+            winner = h1;
+            loser = h2;
+        } else {
+            winner = h2;
+            loser = h1;
+        }
+
+        loser->parent = winner;
+
+        do_unranked_link(winner, loser);
+
+        return winner;
+    }
+
+    virtual void do_unranked_link(Node* winner, Node* loser) const = 0;
+
+};
+
+template <class Key, class Weight>
+class hollow_heap_impl_multiroot : public hollow_heap_impl<Key, Weight> {
+    using Node = base_node<Key, Weight>;
+public:
+    Node* get_start_of_childlist(Node* parent) const override {
+        return parent->child_list;
+    }
+
+    bool reached_end_of_childlist(Node* child, Node* /*prev_child*/, Node* /*parent*/) const override {
+        return child == nullptr;
+    }
+
+    Node* meld_together(Node* added_heap, Node* heap_root_list) const override {
+        // Just set the original root list to be the right sibling of the added heap
+        added_heap->right_sibling = heap_root_list;
+        return added_heap;
+    }
+
+    void do_ranked_link(Node* winner, Node* loser) const override {
+        // Have loser be start of childlist.
+        loser->right_sibling = winner->child_list;
+        winner->child_list = loser;
+    }
+
+    void do_unranked_link(Node* winner, Node* loser) const override {
+        // Invalid state, shouldn never do an unranked link.
+        assert(false);
+    }
+
+    void setup_relationship_between_hollownode_and_copy(
+            Node* hollow_node, Node* new_node) const override {
+        if (hollow_node->child_list == nullptr) {
+            // Not going to transfer any children.
+            return;
+        }
+
+        // Never keep less than one
+        Node* last_node_not_transferred = hollow_node->child_list;
+        // Keep two.
+        if (hollow_node->rank >= 2) {
+            last_node_not_transferred = last_node_not_transferred->right_sibling;
+        }
+
+        new_node->child_list = last_node_not_transferred->right_sibling;
+        last_node_not_transferred->right_sibling = nullptr;
+
+        this->update_parent_pointers(new_node);
+    }
+};
+
+
+template <class Key, class Weight>
+class hollow_heap_impl_singleroot_single_parent : public hollow_heap_impl<Key, Weight> {
+    using Node = base_node<Key, Weight>;
+public:
+    Node* get_start_of_childlist(Node* parent) const override {
+        if (parent->child_list == nullptr) {
+            return nullptr;
+        }
+
+        return parent->child_list->right_sibling;
+    }
+
+
+    bool reached_end_of_childlist(Node* child, Node* prev_child, Node* parent) const override {
+        return child == nullptr || prev_child == parent->child_list;
+    }
+
+    Node* meld_together(Node* added_heap, Node* heap_root_list) const override {
+        // Merging two non-empty heaps. Can do a ranked link if they have equal rank.
+        // Assume heap_root_list was already just a single element.
+        // heap_root_list will always be heap_root_min
+        return force_link(heap_root_list, added_heap);
+    }
+
+    // TODO: Protected???
+
+    void do_ranked_link(Node* winner, Node* loser) const override {
+        if (winner->child_list == nullptr) {
+            // Setup the circular child list
+            loser->right_sibling = loser;
+            winner->child_list = loser;
+        } else {
+            // Add to the initial element of child list.
+            // Since parent points to last element of circlar list.
+            loser->right_sibling = winner->child_list->right_sibling;
+            winner->child_list->right_sibling = loser;
+        }
+    }
+
+    void do_unranked_link(Node* winner, Node* loser) const override {
+        if (winner->child_list == nullptr) {
+            // Setup circular list.
+            loser->right_sibling = loser;
+            winner->child_list = loser;
+        } else {
+            // Add the loser to end of list, so it should be pointed to by 
+            // child_list
+
+            // Keep circular aspect
+            loser->right_sibling = winner->child_list->right_sibling;;
+            winner->child_list->right_sibling = loser;
+
+            // Set loser to now be end of list.
+            winner->child_list = loser;
+        }
+    }
+
+
+
+    void setup_relationship_between_hollownode_and_copy(
+            Node* hollow_node, Node* new_node) const override {
+        if (hollow_node->child_list == nullptr) {
+            // Not going to transfer any children.
+            return;
+        }
+
+        // TODO: Clean this up!
+        Node* start_of_node_childlist = nullptr;
+        Node* end_of_node_childlist = nullptr;
+
+        Node* start_of_new_node_childlist = nullptr;
+        Node* end_of_new_node_childlist = nullptr;
+
+        // Transfer entire child list
+        if (hollow_node->rank == 0) {
+            start_of_new_node_childlist = get_start_of_childlist(hollow_node);
+            end_of_new_node_childlist = hollow_node->child_list;
+        } else {
+            // It keeps the start. Only keeps 1 additional node if its rank is >= 2
+            start_of_node_childlist = get_start_of_childlist(hollow_node);
+            end_of_node_childlist = start_of_node_childlist;
+            if (hollow_node->rank >= 2) {
+                end_of_node_childlist = end_of_node_childlist->right_sibling;
+            }
+
+            // Only transfer nodes if it has more than the last two nodes.
+            // And in that case, transfer everything including the end of the original list.
+            if (end_of_node_childlist != hollow_node->child_list) {
+                start_of_new_node_childlist = end_of_node_childlist->right_sibling;
+                end_of_new_node_childlist = hollow_node->child_list;
+            }
+        }
+
+        // Update the lists pts and keep them circular.
+        hollow_node->child_list = end_of_node_childlist;
+        if (hollow_node->child_list != nullptr) {
+            hollow_node->child_list->right_sibling = start_of_node_childlist;
+        }
+
+        new_node->child_list = end_of_new_node_childlist;
+        if (new_node->child_list != nullptr) {
+            new_node->child_list->right_sibling = start_of_new_node_childlist;
+        }
+
+        this->update_parent_pointers(new_node);
+    }
+
+private:
+    Node* force_link(Node* h1, Node* h2) const {
+        if (h1->rank == h2->rank) {
+            return this->ranked_link(h1, h2);
+        } else {
+            return this->unranked_link(h1, h2);
+        }
+    }
+};
+
+template <class Key, class Weight>
+class hollow_heap_impl_singleroot_two_parent : public hollow_heap_impl<Key, Weight> {
+    using Node = base_node<Key, Weight>;
+public:
+    Node* get_start_of_childlist(Node* parent) const override {
+        return parent->child_list;
+    }
+
+
+    bool reached_end_of_childlist(Node* child, Node* prev_child, Node* parent) const override {
+            // No child, or went past the second parent child, which would be at the end of the childlist
+        return child == nullptr ||
+            (prev_child != nullptr && prev_child->second_parent == parent);
+        
+    }
+
+    Node* meld_together(Node* added_heap, Node* heap_root_list) const override {
+        // Merging two non-empty heaps. Can do a ranked link if they have equal rank.
+        return force_link(heap_root_list, added_heap);
+    }
+
+    void do_ranked_link(Node* winner, Node* loser) const override {
+        // Add to start of childlist.
+        loser->right_sibling = winner->child_list;
+        winner->child_list = loser;
+    }
+
+
+    void do_unranked_link(Node* winner, Node* loser) const override {
+        // Add to start of childlist
+        loser->right_sibling = winner->child_list;
+        winner->child_list = loser;
+    }
+
+    void setup_relationship_between_hollownode_and_copy(
+            Node* hollow_node, Node* new_node) const override {
+        hollow_node->second_parent = new_node;
+        new_node->child_list = hollow_node;
+    }
+
+private:
+    Node* force_link(Node* h1, Node* h2) const {
+        if (h1->rank == h2->rank) {
+            return this->ranked_link(h1, h2);
+        } else {
+            return this->unranked_link(h1, h2);
+        }
+    }
+};
+
+
+}  // namespace internal
+
+
 template <class Key, class Weight>
 class hollow_heap_base {
+    using Node = internal::base_node<Key, Weight>;
 public:
     hollow_heap_base(hollow_heap_type type);
     ~hollow_heap_base();
@@ -93,39 +447,6 @@ public:
 
 protected:
 
-    struct Node {
-        Node(const Key& key, const Weight& weight)
-            : key(key),
-            weight(weight),
-            isHollow(false),
-            parent(nullptr),
-            second_parent(nullptr),
-            rank(0),
-            child_list(nullptr),
-            right_sibling(nullptr) {
-        }
-
-        const Key key;
-        Weight weight;
-        bool isHollow;
-        Node* parent;
-        // Only set in decrease key when doing two parent variant.
-        // Will be the last node for that parent, so don't need to store an
-        // additional ptr for it.
-        Node* second_parent;
-
-        // Invarient:
-        //  Will have rank children, with the children being in order r - 1, r - 2, ... 0
-        //  Unless is hollow, in which case will have r - 1, r - 2 children.
-        int rank;
-        // Will point to the highest ranked node in multiple root heap.
-        // Will point to rank 0 node if no unranked children, otherwise will not have any children.
-        // The first rank elements will be the ranked children, in decreasing order of rank.
-        // Then, these will be followed by the unranked children (if there are any).
-        Node* child_list;
-        Node* right_sibling;
-    };
-
     // Will always be a single linked list.
     Node* heap_root_list;
     // The smallest weighted Node in heap_root_list list.
@@ -143,25 +464,21 @@ protected:
     // TODO: Use this!
     void clean_out_hollow_nodes();
 
-    Node* get_start_of_childlist(Node* parent) const;
+    // Handles the specialized algorithms for the class.
+    std::unique_ptr<internal::hollow_heap_impl<Key, Weight>> impl;
+
+    Node* get_start_of_childlist(Node* parent) const {
+        return impl->get_start_of_childlist(parent);
+    }
 
     // NOTE: Must be used with get_start_of_childlist
-    bool reached_end_of_childlist(Node* child, Node* prev_child, Node* parent) const;
+    bool reached_end_of_childlist(Node* child, Node* prev_child, Node* parent) const {
+        return impl->reached_end_of_childlist(child, prev_child, parent);
+    }
 
 private:
     // May update heap_root_list + heap_root_min as necessary.
     void meld_into_root(Node* heap);
-
-    // Will link the two nodes, using ranked link if possible.
-    // Otherwise, will use unranked linke.
-    Node* force_link(Node* n1, Node* n2);
-
-    // Links are only used in delete-min operation.
-    // Will assert that their rank is equal
-    Node* ranked_link(Node* n1, Node* n2);
-
-    // Should write out the invarients for the different versions.
-    Node* unranked_link(Node* n1, Node* n2);
 
     void decrease_key(Node* node, const Weight& new_weight);
 
@@ -182,15 +499,35 @@ private:
     std::unordered_map<Key, Node*> key_to_node;
 
     size_t num_elem;
-};
 
-#define hollow_heap_node typename hollow_heap_base<Key, Weight>::Node
+    hollow_heap_base(const hollow_heap_base& other) = delete;
+    hollow_heap_base& operator=(const hollow_heap_base& other) = delete;
+};
 
 template <class Key, class Weight>
 hollow_heap_base<Key, Weight>::hollow_heap_base(hollow_heap_type type)
     : heap_root_list(nullptr),
     type(type),
     num_elem(0) {
+
+    switch (type) {
+    case hollow_heap_type::MULTIPLE_ROOTS:
+        impl.reset(new internal::hollow_heap_impl_multiroot<Key, Weight>{});
+        break;
+
+    case hollow_heap_type::SINGLE_ROOT:
+        impl.reset(new internal::hollow_heap_impl_singleroot_single_parent<Key, Weight>{});
+        break;
+
+    case hollow_heap_type::TWO_PARENT:
+        impl.reset(new internal::hollow_heap_impl_singleroot_two_parent<Key, Weight>{});
+        break;
+
+    default:
+        // Should never reach here.
+        assert(false);
+
+    }
 }
 
 template <class Key, class Weight>
@@ -212,6 +549,7 @@ hollow_heap_base<Key, Weight>::~hollow_heap_base() {
                 prev_child = child, child = next) {
             next = child->right_sibling;
 
+            // TODO: This may need to be refactored later.
             // Child if child has only 1 parent remaining
             if (child->second_parent == nullptr) {
                 // If child has only one parent (this guy), delete child.
@@ -309,7 +647,7 @@ void hollow_heap_base<Key, Weight>::clean_out_hollow_nodes() {
 
 // Should have been updated for double parent.
 template <class Key, class Weight>
-hollow_heap_node* hollow_heap_base<Key, Weight>::get_rootlist_candidates() {
+typename hollow_heap_base<Key, Weight>::Node* hollow_heap_base<Key, Weight>::get_rootlist_candidates() {
     std::queue<Node*> toMergeWithHeapRoot;
     for (Node* current = heap_root_list; current != nullptr; current = current->right_sibling) {
         toMergeWithHeapRoot.push(current);
@@ -331,6 +669,7 @@ hollow_heap_node* hollow_heap_base<Key, Weight>::get_rootlist_candidates() {
                     prev_child = child, child = next) {
                 next = child->right_sibling;
 
+                // TODO: May need to refactor this later.
                 if (child->parent == nullptr || child->second_parent == nullptr) {
                     child->parent = child->second_parent = nullptr;
                     toMergeWithHeapRoot.push(child);
@@ -378,7 +717,7 @@ void hollow_heap_base<Key, Weight>::regenerate_root_list(
 
         while (ranks[current_node->rank] != nullptr) {
             int rank = current_node->rank;
-            current_node = ranked_link(current_node, ranks[rank]);
+            current_node = impl->ranked_link(current_node, ranks[rank]);
             ranks[rank] = nullptr;
         }
         ranks[current_node->rank] = current_node;
@@ -427,71 +766,7 @@ void hollow_heap_base<Key, Weight>::decrease_key(Node* node, const Weight& new_w
 
     new_node->rank = std::max(node->rank - 2, 0);
 
-    // Only transfer children when not allowing multiple parents.
-    if (type == hollow_heap_type::TWO_PARENT) {
-        // The new node becomes a secondary parent of original node.
-        node->second_parent = new_node;
-        new_node->child_list = node;
-    } else {
-        // Transfer some nodes if it has any.
-        if (node->child_list != nullptr) {
-            if (allow_unranked_links()) {
-                Node* start_of_node_childlist = nullptr;
-                Node* end_of_node_childlist = nullptr;
-
-                Node* start_of_new_node_childlist = nullptr;
-                Node* end_of_new_node_childlist = nullptr;
-
-                // Transfer entire child list
-                if (node->rank == 0) {
-                    start_of_new_node_childlist = get_start_of_childlist(node);
-                    end_of_new_node_childlist = node->child_list;
-                } else {
-                    // It keeps the start. Only keeps 1 additional node if its rank is >= 2
-                    start_of_node_childlist = get_start_of_childlist(node);
-                    end_of_node_childlist = start_of_node_childlist;
-                    if (node->rank >= 2) {
-                        end_of_node_childlist = end_of_node_childlist->right_sibling;
-                    }
-
-                    // Only transfer nodes if it has more than the last two nodes.
-                    // And in that case, transfer everything including the end of the original list.
-                    if (end_of_node_childlist != node->child_list) {
-                        start_of_new_node_childlist = end_of_node_childlist->right_sibling;
-                        end_of_new_node_childlist = node->child_list;
-                    }
-                }
-
-                // Update the lists pts and keep them circular.
-                node->child_list = end_of_node_childlist;
-                if (node->child_list != nullptr) {
-                    node->child_list->right_sibling = start_of_node_childlist;
-                }
-
-                new_node->child_list = end_of_new_node_childlist;
-                if (new_node->child_list != nullptr) {
-                    new_node->child_list->right_sibling = start_of_new_node_childlist;
-                }
-
-            } else {
-                // Never keep less than one
-                Node* last_node_not_transferred = node->child_list;
-                if (node->rank >= 2) {
-                    last_node_not_transferred = last_node_not_transferred->right_sibling;
-                }
-
-                new_node->child_list = last_node_not_transferred->right_sibling;
-                last_node_not_transferred->right_sibling = nullptr;
-            }
-
-            // Now, update the parent pointer for moved nodes.
-            for (Node *child = get_start_of_childlist(new_node), *prev_child = nullptr;
-                    !reached_end_of_childlist(child, prev_child, new_node);
-                    prev_child = child, child = child->right_sibling) {
-                child->parent = new_node;
-            }
-        }
-    }
+    impl->setup_relationship_between_hollownode_and_copy(node, new_node);
 
     meld_into_root(new_node);
 }
@@ -506,167 +781,11 @@ void hollow_heap_base<Key, Weight>::meld_into_root(Node* heap) {
         return;
     }
 
-    if (allow_multiple_roots()) {
-        // If heap is a multi root, add heap to root list.
-
-        // Put it into heap_root_list, as the second element since that is easiest.
-        heap->right_sibling = heap_root_list->right_sibling;
-        heap_root_list->right_sibling = heap;
-
-        // Update the min element as necessary.
-        if (heap->weight < heap_root_min->weight) {
-            heap_root_min = heap;
-        }
-    } else {
-        // Merging two non-empty heaps. Can do a ranked link if they have equal rank.
-        // Assume heap_root_list was already just a single element.
-        // heap_root_list will always be heap_root_min
-        heap_root_list = heap_root_min = force_link(heap_root_list, heap);
-    }
+    heap_root_list = impl->meld_together(heap, heap_root_list);
+    if (heap->weight < heap_root_min->weight) {
+        heap_root_min = heap;
+    } 
 }
-
-template <class Key, class Weight>
-hollow_heap_node* hollow_heap_base<Key, Weight>::force_link(Node* h1, Node* h2) {
-    if (h1->rank == h2->rank)
-        return ranked_link(h1, h2);
-    else
-        return unranked_link(h1, h2);
-}
-
-
-template <class Key, class Weight>
-hollow_heap_node* hollow_heap_base<Key, Weight>::ranked_link(Node* h1, Node* h2) {
-    assert(h1->rank == h2->rank);
-
-    // Only allow links between roots.
-    assert(h1->parent == nullptr);
-    assert(h2->parent == nullptr);
-
-    Node* winner;
-    Node* loser;
-    if (h1->weight < h2->weight) {
-        winner = h1;
-        loser = h2;
-    } else {
-        winner = h2;
-        loser = h1;
-    }
-    
-    // Add loser to winners child list, in correct position.
-    loser->parent = winner;
-
-    if (!uses_circular_childlist()) {
-        loser->right_sibling = winner->child_list;
-        winner->child_list = loser;
-    } else {
-        if (winner->child_list != nullptr) {
-            // Multi root child is last on end, and adding ranked to start of list
-            loser->right_sibling = winner->child_list->right_sibling;
-            winner->child_list->right_sibling = loser;
-        } else {
-            // Setup circular list.
-            winner->child_list = loser;
-            loser->right_sibling = loser;
-        }
-        
-        // Will have the child's right sibling be the loser.
-        // If winner didn't previously have children, then loser will point to itself.
-    }
-
-    winner->rank++;
-
-    return winner;
-}
-
-template <class Key, class Weight>
-hollow_heap_node* hollow_heap_base<Key, Weight>::unranked_link(Node* h1, Node* h2) {
-    assert(h1->rank != h2->rank);
-    assert(allow_unranked_links());
-
-    // Only allow links between roots.
-    assert(h1->parent == nullptr);
-    assert(h2->parent == nullptr);
-
-    Node* winner;
-    Node* loser;
-    if (h1->weight < h2->weight) {
-        winner = h1;
-        loser = h2;
-    } else {
-        winner = h2;
-        loser = h1;
-    }
-
-    // Add loser to winners child list, in correct position.
-    // It will be added to the very end of the list, so it would become
-    // the child of the winner.
-    loser->parent = winner;
-
-    if (!uses_circular_childlist()) {
-        //std::cout << "Should have just added the loser to the childlist of winner\n"
-        //    << "Loser: " << loser->key << " winner " << winner->key << '\n';
-        // Just add the node nicely into the front of the list.
-        loser->right_sibling = winner->child_list;
-        winner->child_list = loser;
-    } else {
-        if (winner->child_list != nullptr) {
-            // Add the loser to end of list, so between the previous_end and what was
-            // its right sibling.
-            Node* previous_end = winner->child_list;
-            loser->right_sibling = previous_end->right_sibling;
-            previous_end->right_sibling = loser;
-        } else {
-            // Setup circular list.
-            loser->right_sibling = loser;
-        }
-
-        winner->child_list = loser;
-    }
-
-    return winner;
-}
-
-
-template <class Key, class Weight>
-hollow_heap_node* hollow_heap_base<Key, Weight>::get_start_of_childlist(Node* parent) const {
-    if (parent->child_list == nullptr)
-        return nullptr;
-
-    if (uses_circular_childlist()) {
-        return parent->child_list->right_sibling;
-    } else {
-        return parent->child_list;
-    }
-}
-
-template <class Key, class Weight>
-bool hollow_heap_base<Key, Weight>::reached_end_of_childlist(Node* child, Node* prev_child,
-        Node* parent) const {
-    if (child == nullptr) {
-        return true;
-    }
-
-    switch (type) {
-    case hollow_heap_type::MULTIPLE_ROOTS:
-        // Only way for it to be the end is for the child to be nullptr.
-        return false;
-
-    case hollow_heap_type::SINGLE_ROOT:
-        // Since is a circular list, and should have started with this node.
-        return prev_child == parent->child_list;
-
-    case hollow_heap_type::TWO_PARENT:
-        // Reached end of the simple list -> prev_child->second_parent = nullptr
-        // means reached the end of the list.
-        return child == nullptr ||
-            (prev_child != nullptr && prev_child->second_parent == parent);
-
-    default:
-        // Shouldn't reach here.
-        assert(false);
-    }
-}
-
 
 template <class Key, class Weight>
 void hollow_heap_base<Key, Weight>::print_out(std::ostream& o) const {
@@ -710,5 +829,6 @@ void hollow_heap_base<Key, Weight>::print_out_for_node(Node* node, Node* parent,
     print_out_childlist(node, o, offset + "    ");
 }
 
+}  // namespace hollow_heap
 
 #endif  // HOLLOW_HEAP

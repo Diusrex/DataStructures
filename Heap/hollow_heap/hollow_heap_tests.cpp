@@ -11,6 +11,7 @@
 #include <sstream>
 #include <vector>
 
+using namespace hollow_heap;
 
 using std::to_string;
 
@@ -18,18 +19,16 @@ const int NumRandomInserted =       500000;
 
 const int NumRandomChanged =        200000;
 
-// TODO: Increase to 1000000 once multiple parents is faster...
-    // Must be doing something extremely inefficiently, but is using the same amount of memory as other
-    // approaches.
-const int NumElementsInserted =    10000;
+const int NumElementsInserted =    1000000;
 const int EveryIndexChanged =            3;
 const int EveryIndexRemovedAfterChange = 4;
 
 class hollow_heap_test : public hollow_heap_base<std::string, int> {
+    using Node = internal::base_node<std::string, int>;
 public:
     hollow_heap_test(hollow_heap_type type)
-        : hollow_heap_base(type)
-    {}
+        : hollow_heap_base(type) {
+    }
 
     void assert_is_valid(bool most_recent_was_delete) const {
         size_t total_num_nodes = 0;
@@ -233,10 +232,11 @@ private:
         //   1) Reaches a child which has parent as its second parent.
         //   2) The ranks reach 0.
         // Can possibly have both happen at once!
-        Node* current = parent->child_list;
-        Node* prev = nullptr;
+        Node* current = get_start_of_childlist(parent);
+        Node* prev_child = nullptr;
 
-        for (; current != nullptr; prev = current, current = current->right_sibling) {
+        for (; !reached_end_of_childlist(current, prev_child, parent);
+                prev_child = current, current = current->right_sibling) {
             // Would have done a ranked link to add this node (or a latter node of same rank).
             if (current->rank == rank) {
                 --rank;
@@ -253,11 +253,11 @@ private:
         if (last_rank != 0) {
             // Check to see if this node was the second parent of a node with rank last_rank + 2
             // TODO: MAKE SURE it is actually + 2
-            if (prev->second_parent == parent) {
-                if (last_rank != prev->rank - 2)
+            if (prev_child->second_parent == parent) {
+                if (last_rank != prev_child->rank - 2)
                     throw "Didn't have enough ranked links, only got down to rank " +
                         to_string(last_rank) + " from rank " + to_string(parent->rank) +
-                        " to childs " + to_string(prev->rank);
+                        " to childs " + to_string(prev_child->rank);
             }
 
         }
@@ -286,14 +286,6 @@ private:
     }
 };
 
-// TODO: Remove later.
-void my_terminate()
-{
-    std::cout << "I sure hope this gets caught\n";
-    int* temp = nullptr;
-    *temp = 5;
-}
-
 void CheckMinValue(const hollow_heap_test& heap, int expected_weight) {
     std::pair<std::string, int> actual = heap.find_min();
 
@@ -318,8 +310,8 @@ void CheckHeapSize(const hollow_heap_test& heap, size_t expected_size) {
         throw "Heap size is wrong: expected " + to_string(expected_size) + " got " + to_string(heap.size());
 }
 
-void InsertionUnchangedMinTest(hollow_heap_test heap) {
-    assert(heap.empty());
+void InsertionUnchangedMinTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     heap.insert("B", 6);
@@ -336,8 +328,8 @@ void InsertionUnchangedMinTest(hollow_heap_test heap) {
     }
 }
 
-void InsertionChangesMinTest(hollow_heap_test heap) {
-    assert(heap.empty());
+void InsertionChangesMinTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     // Becomes root
@@ -356,13 +348,13 @@ void InsertionChangesMinTest(hollow_heap_test heap) {
     }
 }
 
-void NoRankedWithUnrankedChangeMinTest(hollow_heap_test heap) {
+void NoRankedWithUnrankedChangeMinTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
+
     // Specialized test to ensure single root updating is handled correctly.
     if (!heap.heap_is_single_root_single_parent()) {
         return;
     }
-
-    assert(heap.empty());
 
     heap.insert("A", 5);
     // A has B assigned as child with ranked link.
@@ -391,13 +383,13 @@ void NoRankedWithUnrankedChangeMinTest(hollow_heap_test heap) {
     }
 }
 
-void OneRankedWithUnrankedChangedMinTest(hollow_heap_test heap) {
+void OneRankedWithUnrankedChangedMinTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
+
     // Specialized test to ensure single root updating is handled correctly.
     if (!heap.heap_is_single_root_single_parent()) {
         return;
     }
-
-    assert(heap.empty());
 
     heap.insert("A", 5);
     // A has B assigned as child with ranked link.
@@ -427,8 +419,8 @@ void OneRankedWithUnrankedChangedMinTest(hollow_heap_test heap) {
 
 }
 
-void ChangeWeightMinUnchangedTest(hollow_heap_test heap) {
-    assert(heap.empty());
+void ChangeWeightMinUnchangedTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     heap.insert("B", 12);
@@ -448,8 +440,8 @@ void ChangeWeightMinUnchangedTest(hollow_heap_test heap) {
     }
 }
 
-void DeleteMinTest(hollow_heap_test heap) {
-    assert(heap.empty());
+void DeleteMinTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     heap.insert("B", 6);
@@ -469,8 +461,8 @@ void DeleteMinTest(hollow_heap_test heap) {
 
 }
 
-void DeleteMinMultipleLinks(hollow_heap_test heap) {
-    assert(heap.empty());
+void DeleteMinMultipleLinks(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     heap.insert("B", 6);
@@ -492,8 +484,8 @@ void DeleteMinMultipleLinks(hollow_heap_test heap) {
     }
 }
 
-void ChangeWeightMinChangedTest(hollow_heap_test heap) {
-    assert(heap.empty());
+void ChangeWeightMinChangedTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     heap.insert("B", 12);
@@ -511,8 +503,8 @@ void ChangeWeightMinChangedTest(hollow_heap_test heap) {
     }
 }
 
-void ChangeWeightOfChildMustMove(hollow_heap_test heap) {
-    assert(heap.empty());
+void ChangeWeightOfChildMustMove(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     heap.insert("B", 6);
@@ -535,8 +527,8 @@ void ChangeWeightOfChildMustMove(hollow_heap_test heap) {
     }
 }
 
-void MultipleHollowNodesInRootlist(hollow_heap_test heap) {
-    assert(heap.empty());
+void MultipleHollowNodesInRootlist(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
     heap.insert("B", 6);
@@ -578,8 +570,8 @@ void MultipleHollowNodesInRootlist(hollow_heap_test heap) {
     }
 }
 
-void RemoveAllNodes(hollow_heap_test heap) {
-    assert(heap.empty());
+void RemoveAllNodes(hollow_heap_type type) {
+    hollow_heap_test heap(type);
 
     heap.insert("A", 5);
 
@@ -621,8 +613,8 @@ void ChangeCount(std::map<int, int>& weight_to_counts, int weight, int change) {
     }
 }
 
-void LargeRandomTest(hollow_heap_test heap) {
-    assert(heap.empty());
+void LargeRandomTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
     std::cout << "Starting large random test.\n\n";
 
     srand(0);
@@ -737,8 +729,8 @@ void LargeRandomTest(hollow_heap_test heap) {
     }
 }
 
-void LargeTest(hollow_heap_test heap) {
-    assert(heap.empty());
+void LargeTest(hollow_heap_type type) {
+    hollow_heap_test heap(type);
     std::cout << "Starting large test.\n\n";
 
     std::vector<std::string> names = GetAllNames(NumElementsInserted);
@@ -780,37 +772,34 @@ void LargeTest(hollow_heap_test heap) {
     }
 }
 
-void run_hollow_heap_tests(const hollow_heap_test& heap) {
-    InsertionUnchangedMinTest(heap);
-    InsertionChangesMinTest(heap);
+void run_hollow_heap_tests(hollow_heap_type type) {
+    InsertionUnchangedMinTest(type);
+    InsertionChangesMinTest(type);
 
-    DeleteMinTest(heap);
-    DeleteMinMultipleLinks(heap);
+    DeleteMinTest(type);
+    DeleteMinMultipleLinks(type);
 
-    ChangeWeightMinUnchangedTest(heap);
-    ChangeWeightMinChangedTest(heap);
-    ChangeWeightOfChildMustMove(heap);
+    ChangeWeightMinUnchangedTest(type);
+    ChangeWeightMinChangedTest(type);
+    ChangeWeightOfChildMustMove(type);
 
     // Specialized tests.
-    NoRankedWithUnrankedChangeMinTest(heap);
-    OneRankedWithUnrankedChangedMinTest(heap);
+    NoRankedWithUnrankedChangeMinTest(type);
+    OneRankedWithUnrankedChangedMinTest(type);
     
-    MultipleHollowNodesInRootlist(heap);
+    MultipleHollowNodesInRootlist(type);
 
-    LargeRandomTest(heap);
-    LargeTest(heap);
+    LargeRandomTest(type);
+    LargeTest(type);
 }
 
 
-
-
 int main() {
-    std::set_terminate([](){my_terminate(); });
     std::cout << "Running heap with multiple roots\n";
-    run_hollow_heap_tests(hollow_heap_test{hollow_heap_type::MULTIPLE_ROOTS});
+    run_hollow_heap_tests(hollow_heap_type::MULTIPLE_ROOTS);
     std::cout << "\nRunning heap with single root\n";
-    run_hollow_heap_tests(hollow_heap_test{hollow_heap_type::SINGLE_ROOT});
+    run_hollow_heap_tests(hollow_heap_type::SINGLE_ROOT);
     std::cout << "\nRunning heap with multiple parents\n";
-    run_hollow_heap_tests(hollow_heap_test{hollow_heap_type::TWO_PARENT});
+    run_hollow_heap_tests(hollow_heap_type::TWO_PARENT);
 }
 
