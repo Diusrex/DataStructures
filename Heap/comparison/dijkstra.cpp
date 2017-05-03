@@ -12,8 +12,7 @@ using namespace std;
 using hollow_heap::hollow_heap_base;
 using hollow_heap::hollow_heap_type;
 
-// TODO: This should have its own folder in Heap directory, and be able to run
-// hollow heap and pairing heap.
+const int NumberRuns = 5;
 
 // Assumes the data is provided through input stream, in format:
 // N E
@@ -253,58 +252,75 @@ int main(int argc, char *argv[]) {
         edges = GenerateGraph(N, E);
         std::cout << "Done generate edges.\n";
     }
-    
-    chrono::milliseconds before =
-        chrono::duration_cast< chrono::milliseconds >(
-                chrono::system_clock::now().time_since_epoch());
 
-
+    vector<int> sources;
     int source;
     while (cin >> source) {
-        vector<int> distances;
-        std::unique_ptr<HeapWrapper> wrapper;
-        switch (dijkstras_to_use) {
-        case DijkstrasToUse::REINSERT:
-            distances = DijkstraReInsert(edges, source);
-            break;
-
-        case DijkstrasToUse::UPDATE_KEY_HOLLOW_MULTI_ROOT:
-            wrapper.reset(new HollowHeapWrapper{hollow_heap_type::MULTIPLE_ROOTS});
-            distances = DijkstraKeyUpdate(
-                    edges, source, wrapper.get());
-            break;
-
-        case DijkstrasToUse::UPDATE_KEY_HOLLOW_SINGLE_ROOT:
-            wrapper.reset(new HollowHeapWrapper{hollow_heap_type::SINGLE_ROOT});
-            distances = DijkstraKeyUpdate(
-                    edges, source, wrapper.get());
-            break;
-
-        case DijkstrasToUse::UPDATE_KEY_HOLLOW_TWO_PARENT:
-            wrapper.reset(new HollowHeapWrapper{hollow_heap_type::TWO_PARENT});
-            distances = DijkstraKeyUpdate(
-                    edges, source, wrapper.get());
-            break;
-
-        case DijkstrasToUse::UPDATE_KEY_PAIRING_HEAP:
-            wrapper.reset(new PairingHeapWrapper);
-            distances = DijkstraKeyUpdate(
-                    edges, source, wrapper.get());
-            break;
-
-        }
-
-        if (printOutput) {
-            for (int i = 0; i < N; ++i) {
-                cout << i << ": " << distances[i] << '\n';
-            }
-            cout << "\n\n";
-        }
+        sources.push_back(source);
     }
 
-    chrono::milliseconds after =
-        chrono::duration_cast< chrono::milliseconds >(
+    int total_time = 0;
+ 
+    for (int i = 0; i < NumberRuns; ++i) {
+        std::cout << "Doing run " << i << " of " << NumberRuns << '\n';
+
+        chrono::milliseconds before =
+            chrono::duration_cast< chrono::milliseconds >(
                 chrono::system_clock::now().time_since_epoch());
 
-    cout << "Time for dijkstras (ms): " << (after - before).count() << '\n';
+        for (int source : sources) {
+            vector<int> distances;
+            std::unique_ptr<HeapWrapper> wrapper;
+            switch (dijkstras_to_use) {
+                case DijkstrasToUse::REINSERT:
+                    distances = DijkstraReInsert(edges, source);
+                    break;
+
+                case DijkstrasToUse::UPDATE_KEY_HOLLOW_MULTI_ROOT:
+                    wrapper.reset(new HollowHeapWrapper{hollow_heap_type::MULTIPLE_ROOTS});
+                    distances = DijkstraKeyUpdate(
+                            edges, source, wrapper.get());
+                    break;
+
+                case DijkstrasToUse::UPDATE_KEY_HOLLOW_SINGLE_ROOT:
+                    wrapper.reset(new HollowHeapWrapper{hollow_heap_type::SINGLE_ROOT});
+                    distances = DijkstraKeyUpdate(
+                            edges, source, wrapper.get());
+                    break;
+
+                case DijkstrasToUse::UPDATE_KEY_HOLLOW_TWO_PARENT:
+                    wrapper.reset(new HollowHeapWrapper{hollow_heap_type::TWO_PARENT});
+                    distances = DijkstraKeyUpdate(
+                            edges, source, wrapper.get());
+                    break;
+
+                case DijkstrasToUse::UPDATE_KEY_PAIRING_HEAP:
+                    wrapper.reset(new PairingHeapWrapper);
+                    distances = DijkstraKeyUpdate(
+                            edges, source, wrapper.get());
+                    break;
+
+            }
+
+            if (printOutput) {
+                for (int i = 0; i < N; ++i) {
+                    cout << i << ": " << distances[i] << '\n';
+                }
+                cout << "\n\n";
+            }
+        }
+
+        chrono::milliseconds after =
+            chrono::duration_cast< chrono::milliseconds >(
+                    chrono::system_clock::now().time_since_epoch());
+
+        std::cout << "   Run time: " << (after - before).count() << "ms\n";
+
+        total_time += (after - before).count();
+
+        
+    }
+
+
+    cout << "Average Time for dijkstras (ms): " << total_time / NumberRuns << '\n';
 }
